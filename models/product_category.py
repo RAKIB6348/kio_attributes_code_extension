@@ -12,6 +12,12 @@ class ProductCategory(models.Model):
         copy=False,
         help='Internal sequence used for category-wise product variant barcodes.',
     )
+    size_only_barcode_sequence_id = fields.Many2one(
+        'ir.sequence',
+        string='Size-only Barcode Sequence',
+        copy=False,
+        help='Internal 4-digit sequence used for Size-only variant barcodes.',
+    )
 
     def _get_or_create_barcode_sequence(self):
         self.ensure_one()
@@ -74,3 +80,39 @@ class ProductCategory(models.Model):
             sequence.number_next = highest_existing_sequence + 1
 
         return sequence.next_by_id()
+
+    def _get_or_create_size_only_barcode_sequence(self):
+        self.ensure_one()
+        if self.size_only_barcode_sequence_id:
+            return self.size_only_barcode_sequence_id
+
+        self.env.cr.execute(
+            'SELECT id FROM product_category WHERE id = %s FOR UPDATE',
+            [self.id],
+        )
+        self.invalidate_recordset(['size_only_barcode_sequence_id'])
+        if self.size_only_barcode_sequence_id:
+            return self.size_only_barcode_sequence_id
+
+        sequence_code = 'kio.product.barcode.size_only.category.%s' % self.id
+        sequence = self.env['ir.sequence'].search([('code', '=', sequence_code)], limit=1)
+        if not sequence:
+            sequence = self.env['ir.sequence'].create({
+                'name': 'Size-only Product Barcode - %s' % self.display_name,
+                'code': sequence_code,
+                'padding': 4,
+                'number_increment': 1,
+                'number_next': 1,
+                'implementation': 'standard',
+            })
+        self.size_only_barcode_sequence_id = sequence
+        return sequence
+
+    def _next_size_only_barcode_sequence(self):
+        self.ensure_one()
+        self.env.cr.execute(
+            'SELECT id FROM product_category WHERE id = %s FOR UPDATE',
+            [self.id],
+        )
+        self.invalidate_recordset(['size_only_barcode_sequence_id'])
+        return self._get_or_create_size_only_barcode_sequence().next_by_id()
